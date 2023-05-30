@@ -3,7 +3,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, PowerTransformer
-from sklearn.impute import SimpleImputer
+from sklearn.impute import SimpleImputer, KNNImputer
 
 
 class MyTransformer:
@@ -17,6 +17,7 @@ class MyTransformer:
         power_transform_features (List[str]): A list of feature names to be transformed using PowerTransformer.
         label_column (str, optional): The name of the label column. Defaults to None.
     """
+    imputer: SimpleImputer
     label_column: str | None
     all_features: list[str]
     skewed_features: list[str]
@@ -60,12 +61,15 @@ class MyTransformer:
             pd.DataFrame: The transformed DataFrame.
         """
         self._is_fit = True
+        
+        # abs numerical features
+        df[self.numerical_features] = df[self.numerical_features].abs()
 
         # fit & transform features
         o_df = df.copy()[self.all_features]
         o_df[self.normal_features] = self.normal_feature_transformer.fit_transform(df[self.normal_features])
         o_df[self.skewed_features] = self.skewed_feature_transformer.fit_transform(df[self.skewed_features])
-        o_df = pd.get_dummies(df, columns=self.categorical_features)
+        o_df = pd.get_dummies(o_df, columns=self.categorical_features)
         o_df = o_df.astype(float)
 
         # for each numerical features, add a new column to indicate whether it is missing
@@ -73,14 +77,16 @@ class MyTransformer:
             o_df[feature + '_missing'] = df[feature].isna().astype(float)
 
         # replace all Nan to 0
-        o_df = self.imputer.fit_transform(o_df)
+        o_df = pd.DataFrame(self.imputer.fit_transform(o_df), columns=o_df.columns)
+        
 
         return o_df
 
     def label_fit_transform(self, df: pd.DataFrame):
         # fit & transform label
         o_df = df.copy()
-        return self.label_transformer.fit_transform(o_df[[self.label_column]])
+        o_df = pd.DataFrame(self.label_transformer.fit_transform(o_df[[self.label_column]]), columns=[self.label_column])
+        return o_df
 
     def features_transform(self, df: pd.DataFrame):
         """
@@ -90,12 +96,15 @@ class MyTransformer:
             pd.DataFrame: The transformed DataFrame.
         """
         assert self._is_fit, "Must fit first"
+        
+        # abs numerical features
+        df[self.numerical_features] = df[self.numerical_features].abs()
 
         # fit & transform features
         o_df = df.copy()[self.all_features]
         o_df[self.normal_features] = self.normal_feature_transformer.transform(df[self.normal_features])
         o_df[self.skewed_features] = self.skewed_feature_transformer.transform(df[self.skewed_features])
-        o_df = pd.get_dummies(df, columns=self.categorical_features)
+        o_df = pd.get_dummies(o_df, columns=self.categorical_features)
         o_df = o_df.astype(float)
 
         # for each numerical features, add a new column to indicate whether it is missing
@@ -103,14 +112,15 @@ class MyTransformer:
             o_df[feature + '_missing'] = df[feature].isna().astype(float)
 
         # use sklearn mean imputation to replace all Nan
-        o_df = self.imputer.transform(o_df)
-
+        o_df = pd.DataFrame(self.imputer.fit_transform(o_df), columns=o_df.columns)
+        
         return o_df
 
     def label_transform(self, df: pd.DataFrame):
         # fit & transform label
         o_df = df.copy()
-        return self.label_transformer.transform(o_df[[self.label_column]])
+        o_df = pd.DataFrame(self.label_transformer.transform(o_df[[self.label_column]]), columns=[self.label_column])
+        return o_df
 
     def inverse_label_transform(self, arr: np.array):
         """
